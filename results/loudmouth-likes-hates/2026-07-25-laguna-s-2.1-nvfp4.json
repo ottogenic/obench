@@ -1,0 +1,25 @@
+{
+  "opencode": "1.18.5",
+  "vllm_host": "dgx-spark GB10 (otools-vllm docker)",
+  "judge": "openai/gpt-5.6-sol",
+  "orchestrator": "openai/gpt-5.4-mini",
+  "harness_sha": "4d32663",
+  "target_sha": "8a7546c",
+  "date": "2026-07-25",
+  "notes": "As orchestrator: DNF x2 (never called run; jobs 89-90). Same finding count/classes as qwen3 -- slower with no quality offset. Target repo included prior review files (leakage caveat; classes differed).",
+  "model": "laguna-s-2.1-nvfp4",
+  "loom_job": 91,
+  "nominal_tks": 9,
+  "timings": {
+    "total": "107:25",
+    "plan": "2:07",
+    "code": "47:02",
+    "test": "5:00",
+    "review_fix": "53:16"
+  },
+  "findings_round1": 4,
+  "malformed": 9,
+  "blocked_events": 5,
+  "dispatches": 20,
+  "fix_attempts_worst_finding": null
+}

@@ -1,0 +1,25 @@
+{
+  "opencode": "1.18.5",
+  "vllm_host": "dgx-spark GB10 (otools-vllm docker)",
+  "judge": "openai/gpt-5.6-sol",
+  "orchestrator": "openai/gpt-5.4-mini",
+  "harness_sha": "4d32663",
+  "target_sha": "8a7546c",
+  "date": "2026-07-25",
+  "notes": "Worst first pass (7 findings), best fix loop (8:36) and contract discipline. Reasoning-token tax: nominal 31 tk/s, slowest effective code output. Same leakage caveat as laguna.",
+  "model": "gpt-oss-120b",
+  "loom_job": 92,
+  "nominal_tks": 31,
+  "timings": {
+    "total": "87:43",
+    "plan": "1:59",
+    "code": "74:00",
+    "test": "3:08",
+    "review_fix": "8:36"
+  },
+  "findings_round1": 7,
+  "malformed": 6,
+  "blocked_events": 1,
+  "dispatches": 20,
+  "fix_attempts_worst_finding": null
+}

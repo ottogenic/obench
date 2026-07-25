@@ -1,0 +1,25 @@
+{
+  "opencode": "1.18.5",
+  "vllm_host": "dgx-spark GB10 (otools-vllm docker)",
+  "judge": "openai/gpt-5.6-sol",
+  "orchestrator": "dgx-localhost-8000/qwen3-coder-next-fp8",
+  "harness_sha": "4d32663",
+  "target_sha": "8a7546c",
+  "date": "2026-07-25",
+  "notes": "Own orchestration worked (one pre-build ask). Fix loop dominated: one finding took 4 attempts, 2 forced-BLOCKED cycles.",
+  "model": "qwen3-coder-next-fp8",
+  "loom_job": 88,
+  "nominal_tks": 37,
+  "timings": {
+    "total": "51:27",
+    "plan": "1:54",
+    "code": "10:03",
+    "test": "0:34",
+    "review_fix": "39:00"
+  },
+  "findings_round1": 4,
+  "malformed": 11,
+  "blocked_events": 9,
+  "dispatches": 27,
+  "fix_attempts_worst_finding": 4
+}

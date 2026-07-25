@@ -1,0 +1,6 @@
+[submodule "vendor/loudmouth"]
+	path = vendor/loudmouth
+	url = https://github.com/ottogenic/loudmouth.git
+[submodule "vendor/omodel-wire"]
+	path = vendor/omodel-wire
+	url = https://github.com/ottogenic/omodel-wire.git
