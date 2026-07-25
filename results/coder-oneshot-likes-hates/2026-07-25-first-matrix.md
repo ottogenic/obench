@@ -48,3 +48,28 @@ n=2–3 per cell; single grader (consistent, not blind); grades are ordinal. Run
 996s is an outlier worth re-testing. `contract_line: 0` on every run — the one-shot
 coder never emits the Return Contract trailer without loom's nudge, which is expected
 here and not graded.
+
+
+## Follow-up: instruction A/B (same stack, vllm FP8)
+
+Three rules were added to the repo code overlay, targeting the three measured defect
+classes, and folded into the packet (`packet-likes-hates-v2.txt`).
+
+| vllm FP8 | CRIT | MAJ | Grade | Patch |
+|---|---|---|---|---|
+| baseline G | 0 | 2 | C+ | 07252236-r1 |
+| baseline H | 0 | 2 | C | 07252236-r2 |
+| **+ overlay rules (v2)** | **0** | **1** | **B-** | 07252308-r1 |
+
+Rule-by-rule on the v2 run:
+- "declare helpers before use" -- FOLLOWED (no forward reference).
+- "add new WoW globals to .luacheckrc" -- FOLLOWED (first vllm run to touch it).
+- "cooldown key symmetry" -- NOT followed, but demonstrably READ: the coder built a
+  deliberate `cooldownKey` variable and commented on the naming, yet never updated the
+  CHECK at the top of `Trigger()`. Wording defect, not defiance -- the rule did not say
+  the check lives elsewhere and must move too. Reworded for v3
+  (`packet-likes-hates-v3.txt`).
+
+Takeaway so far: 12 lines of instruction removed two of three defect classes on the
+first attempt, on the same serving stack where engine swaps moved nothing. n=1;
+needs repetition before banking.

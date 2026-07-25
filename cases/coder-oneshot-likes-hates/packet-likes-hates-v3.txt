@@ -1,0 +1,233 @@
+Implement this.
+
+GOAL: goal: Implement Likes and Hates traits for personalities
+
+acceptance criteria:
+- Each personality file can define `likes = { places = {...}, entities = {...} }` and `hates = { places = {...}, entities = {...} }`
+- When entering a liked place (subzone/zone contains keyword), a Likes banter line plays
+- When entering a hated place, a Hates banter line plays
+- When casting on a liked entity, a Likes banter line plays
+- When casting on a hated entity, a Hates banter line plays
+- The banter must align with existing priority system (zone comments, actions, generics)
+- Must follow existing patterns: data structure, keyword matching, weight system
+
+scope boundary:
+- Modify: Loudmouth.lua (core Trigger logic), PERSONALITY_TEMPLATE.lua (template), existing personality files as examples
+- Do NOT modify: UI.lua (no new config UI yet), CopyChat.lua
+- Keep Classic-Era compatible (BackdropTemplate, no newer APIs)
+
+risk: medium - new feature that extends existing detection patterns
+
+PLAN AND ACCEPTANCE CRITERIA (from agent-architect):
+## Current-state findings
+
+- **`future work`** — `Loudmouth.Trigger()` currently resolves pending exact/alias/subzone comments before action and Generic dialogue; this is the priority chain to extend (`Interface/AddOns/Loudmouth/Loudmouth.lua:310-472`).
+- **`future work`** — No entity inspection currently exists. Classic-compatible `UnitName("target")` is documented locally and can supply the target name without automating gameplay (`docs/RESEARCH_NOTES.md:3-8`).
+- **`future work`** — Personality dialogue uses `{ weight, lines }` action buckets, while zones/subzones use keyword-keyed line buckets (`Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua:24-107`).
+- **`pre-existing`** — Some existing zone/subzone entries contain weights, but current zone handling intentionally ignores them (`Interface/AddOns/Loudmouth/Loudmouth.lua:423-430`, `Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua:409-625`). This feature should not silently change existing zone probabilities.
+- **`out of scope`** — A second template exists at `docs/PERSONALITY_TEMPLATE.lua`; the stated modification scope identifies the addon personality template, so the documentation copy should remain unchanged unless the caller explicitly includes it.
+- **`out of scope`** — No UI or macro-generation changes are required. Detection remains inside the player-initiated `Loudmouth.Trigger()` call.
+
+## Numbered implementation plan
+
+1. **Define the trait data contract in the addon personality template.**
+   - Add optional:
+     ```lua
+     likes = {
+         places = { "forge", "mountain" },
+         entities = { "dwarf", "gryphon" },
+     }
+     hates = {
+         places = { "grave", "swamp" },
+         entities = { "undead", "spider" },
+     }
+     ```
+   - Define `actions["Likes"]` and `actions["Hates"]` as the corresponding weighted banter buckets, reusing the established `{ weight, lines }` structure.
+   - Document case-insensitive, plain substring matching and the priority behavior.
+   - Preserve the required `actions["Generic"]` fallback.
+
+2. **Add small reusable matching and weighted-line helpers in `Loudmouth.lua`.**
+   - Match non-empty keywords case-insensitively with `string.find(..., 1, true)`, avoiding Lua patterns.
+   - For places, test each keyword against both `GetRealZoneText()` and `GetSubZoneText()`.
+   - For entities, test against `UnitName("target")`; safely skip matching when no target/name exists.
+   - Reuse the current Debug Mode behavior and `{ weight, lines }` probability semantics rather than creating a second probability model.
+
+3. **Integrate place traits into pending-location resolution.**
+   - Preserve the current exact zone/alias/subzone comments as highest priority and forced first-visit comments.
+   - If no explicit zone/subzone comment matches, check hated-place keywords, then liked-place keywords.
+   - Resolve a match to `actions["Hates"]` or `actions["Likes"]`, respectively.
+   - Consume `PendingZoneComment` once for a matched trait visit. A selected weighted trait bucket should own that pending attempt even if its probability roll fails, rather than falling through to unrelated action dialogue.
+   - Preserve current behavior when traits or corresponding dialogue buckets are absent.
+
+4. **Integrate entity traits into normal action resolution.**
+   - After pending-location handling, inspect the current target.
+   - Select Hates before Likes if overlapping keywords match.
+   - Priority becomes:
+     1. explicit pending zone/subzone comment;
+     2. pending hated-place reaction;
+     3. pending liked-place reaction;
+     4. hated-entity reaction;
+     5. liked-entity reaction;
+     6. named action dialogue;
+     7. Generic fallback.
+   - Apply the selected Likes/Hates bucket’s weight exactly as action weights are currently applied.
+   - Retain the existing per-action cooldown key and ensure at most one line is emitted per `Trigger()` call.
+
+5. **Update both existing personalities as concrete examples.**
+   - Add in-character `likes` and `hates` keyword arrays covering both `places` and `entities`.
+   - Add weighted `actions["Likes"]` and `actions["Hates"]` buckets with at least three short, voice-consistent lines.
+   - Keep registration in `Loudmouth._RawPersonalities`, existing action data, and Generic fallbacks intact.
+   - Do not add the trait pseudo-actions to `ActionOrderByClass`; they are contextual dialogue buckets, not castable macro actions.
+
+6. **Verify compatibility, scope, and behavior.**
+   - Confirm nil-safe handling for omitted trait tables, empty arrays, no target, and missing Likes/Hates action buckets.
+   - Confirm all syntax remains Lua 5.1-compatible and no gameplay automation or newer WoW API is introduced.
+   - Run lint and the required headless addon/UI smoke test.
+   - Exercise deterministic examples with trait weights set to `1`: liked/hated zone and subzone transitions on the next macro press, and liked/hated target names during a cast macro.
+
+## Checkable acceptance criteria
+
+- [ ] A personality may omit traits or define `likes.places`, `likes.entities`, `hates.places`, and `hates.entities` as keyword arrays without load-time/runtime errors.
+- [ ] Likes and Hates dialogue is represented by normal `{ weight, lines }` action buckets.
+- [ ] A liked-place keyword contained in either current zone or subzone selects a Likes line on the next player-triggered macro call.
+- [ ] A hated-place keyword contained in either current zone or subzone selects a Hates line on the next player-triggered macro call.
+- [ ] A liked keyword contained in `UnitName("target")` selects weighted Likes dialogue during `Trigger(action)`.
+- [ ] A hated keyword contained in `UnitName("target")` selects weighted Hates dialogue during `Trigger(action)`.
+- [ ] Matching is case-insensitive, plain substring matching.
+- [ ] Explicit zone/alias/subzone comments remain ahead of traits; place traits remain ahead of entity/action/Generic dialogue.
+- [ ] Hates deterministically wins when the same context matches both Likes and Hates.
+- [ ] At most one line is sent per `Trigger()` call.
+- [ ] Action and Generic behavior remains unchanged when no trait matches.
+- [ ] Both existing personalities demonstrate place/entity Likes and Hates and retain Generic fallback lines.
+- [ ] Chat remains initiated only through player macros calling `Loudmouth.Trigger()`.
+- [ ] Only the in-scope core and personality/template files are changed.
+
+## Scope exclusions
+
+- No changes to `Interface/AddOns/Loudmouth/UI.lua`.
+- No changes to `Interface/AddOns/Loudmouth/CopyChat.lua`.
+- No new configuration controls or SavedVariables.
+- No target selection, casting, combat automation, or event-driven chat emission.
+- No macro slot/order additions for Likes or Hates.
+- No redesign of existing zone aliases, cooldowns, locale handling, or legacy zone weights.
+- No Classic UI/template work.
+- No change to `docs/PERSONALITY_TEMPLATE.lua` under the supplied scope.
+
+## Verification commands
+
+```sh
+git diff --check
+git diff --name-only
+luacheck .
+./tests/ui-test.sh
+rg -n 'likes|hates|\["Likes"\]|\["Hates"\]|UnitName\("target"\)' \
+  Interface/AddOns/Loudmouth
+```
+
+Expected results: no whitespace errors; only in-scope files changed; `luacheck .` passes; `./tests/ui-test.sh` reports `RESULT: PASS`; both personalities and the addon template expose the new trait structure.
+
+Run your focused checks; agent-test runs the broad suite after you.
+
+## Role instructions (agent-code)
+
+# agent-code
+
+Implement exactly the delegated goal -- no more, no less.
+
+## Before Editing
+
+1. Read the project instructions (AGENTS.md or equivalent) if present.
+2. Read the relevant files, neighboring code, and existing tests.
+3. Never assume a library, framework, or convention exists -- confirm it in the code.
+
+## Rules
+
+- Make the smallest complete change. No unrelated refactors.
+- Do not add backwards-compatibility shims unless the task requires them.
+- Preserve unrelated changes already in the worktree. Never revert user work.
+- Never run destructive git commands (reset --hard, checkout --, force push, clean).
+- Use the read/search/edit tools, not shell file operations.
+- Run independent reads and checks in parallel.
+- Match the existing code style. Keep comments rare and useful.
+- Never expose, log, or commit secrets.
+- Do not commit or push unless the delegated task explicitly says to. Never open, approve, or
+  merge a PR; those steps are dispatched separately by the pipeline.
+- Do not guess URLs, APIs, versions, or other external facts -- return
+  `STATUS: NEEDS_RESEARCH` instead.
+
+## Verify Your Change
+
+Run focused checks that give fast feedback: a syntax check, the targeted tests, or a narrow
+smoke command. Do NOT run full suites, long scripts, or broad lint/build passes --
+broad verification runs later in the pipeline -- unless the delegated task explicitly
+asks you to. State any risk you could not verify.
+
+## Repo-specific instructions (agent-code)
+
+# Loudmouth Coding Overlay
+
+Additive overlay on the global `agent-code` role instructions.
+
+## Repo Layout
+
+- Addon code lives under `Interface/AddOns/Loudmouth/`; do not add implementation files at
+  the repo root or under `addon_examples/`, `_classic_era_/`, or `tools/`.
+- Personality files live under `Interface/AddOns/Loudmouth/Personalities/` and must be added
+  to `Loudmouth.toc` before core files when new files are introduced.
+
+## Classic Era Lua/API Rules
+
+- Classic Era uses Lua 5.1: no `goto`, no `::label::`, no Lua 5.2+ syntax.
+- Use `BackdropTemplate`; never use `UIPanelFrameTemplate`.
+- Guard `SetBackdrop`: mix in `BackdropTemplateMixin` when needed and call only if present.
+- Call `frame:CreateFontString()` with no third argument; then call `SetFontObject(...)`.
+- Initialize shared tables as `X = X or {}`.
+- Add new WoW globals to `.luacheckrc`; do not use inline luacheck suppressions.
+
+## Macro And Combat Safety
+
+- `CreateMacro`, `EditMacro`, and `DeleteMacro` are combat-restricted. Guard with
+  `InCombatLockdown()` and defer work instead of calling them in combat.
+- Loudmouth account-wide macros use fixed names `LM_01`..`LM_99`; do not reintroduce
+  spell-name or abbreviation macro names without architect approval.
+- Do not delete unrelated user macros; cleanup must target Loudmouth-owned names only.
+
+## Lua Structure And Existing Contracts
+
+- Declare `local function` helpers BEFORE the function that calls them. A helper
+  declared after `Loudmouth.Trigger()` resolves to a nil global at runtime and
+  crashes the feature the first time it fires.
+- Trait dialogue must respect the existing cooldown. `Loudmouth.Trigger()` checks
+  `Loudmouth.Cooldowns[action]` near the top and writes the same key after speaking.
+  If a trait overrides the action, EITHER keep writing `Cooldowns[action]`, OR update
+  BOTH the check and the write to your new key. A write whose key is never checked
+  means the cooldown silently does nothing.
+- New WoW globals (e.g. `UnitName`) must be added to `.luacheckrc` in the same
+  change -- `luacheck .` must stay at 0 warnings / 0 errors.
+
+## Verification
+
+- Your sanctioned focused check is `luacheck .` -- it is fast in this repo and an
+  explicit exception to the global no-broad-lint rule.
+- Leave `./tests/ui-test.sh` to `agent-test`; run it yourself only if the dispatched
+  task explicitly asks you to.
+- Put the exact command output (PASS/FAIL) and changed files (`path:line`) in your
+  **EVIDENCE**. Do not claim success from intent.
+
+## Return Contract
+
+Put your FULL deliverable (the plan, findings, or description of changes) in the
+message body FIRST. Then end every reply with exactly this block, replacing each
+<placeholder> with your actual content -- NEVER repeat the placeholder text itself:
+
+    RESULT: <one-paragraph summary of what you did or found, with files as path:line>
+    EVIDENCE: <each command or check you ran and what it RETURNED, or your sources>
+    STATUS: <one of DONE | CONTINUE | NEEDS_RESEARCH | BLOCKED>
+
+- `STATUS: DONE` -- assigned work is complete.
+- `STATUS: CONTINUE` -- making progress with a concrete next step.
+- `STATUS: NEEDS_RESEARCH` -- blocked on specific facts; include a focused `RESEARCH REQUEST:` list of questions.
+- `STATUS: BLOCKED` -- no sound path forward; EVIDENCE shows attempts and the exact error.
+
+Do not spin: if you would return `CONTINUE` a second time with nothing new in
+EVIDENCE, return `BLOCKED` instead. Escalating early is correct behavior, not failure.

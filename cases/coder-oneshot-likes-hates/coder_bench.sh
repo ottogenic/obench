@@ -6,10 +6,12 @@ set -u
 N=${1:?n_runs}
 MODEL=${2:?coder model ref}
 TAG=${3:-bench/likes-hates-base}
+PACKET_ARG=${4:-}
 REPO=/home/otto/Documents/loudmouth
 OB=/home/otto/obench
 RUNS=$OB/runs
 OUT=/tmp/coder_bench.out
+PACKET=${PACKET_ARG:-$OB/packet-likes-hates.txt}
 mkdir -p "$RUNS"
 : > "$OUT"
 log() { echo "[$(date -u +%H:%M:%S)] $*" >> "$OUT"; }
@@ -25,7 +27,7 @@ for i in $(seq 1 "$N"); do
   [ -n "$SID" ] || { log "FAIL: no session"; continue; }
   S=$(date +%s)
   python3 "$OB/bench_post.py" "$SID" agent-code "$MODEL" \
-    "$OB/packet-likes-hates.txt" 2100 > "$RUNS/$STAMP-r$i-reply.txt" 2>&1
+    "$PACKET" 2100 > "$RUNS/$STAMP-r$i-reply.txt" 2>&1
   RC=$?
   E=$(($(date +%s)-S))
   git -C "$REPO" diff > "$RUNS/$STAMP-r$i.patch"
