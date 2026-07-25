@@ -1,0 +1,344 @@
+diff --git a/Interface/AddOns/Loudmouth/Loudmouth.lua b/Interface/AddOns/Loudmouth/Loudmouth.lua
+index b1e1197..9472739 100644
+--- a/Interface/AddOns/Loudmouth/Loudmouth.lua
++++ b/Interface/AddOns/Loudmouth/Loudmouth.lua
+@@ -137,6 +137,22 @@ function Loudmouth._ResolveSpellName(key)
+     return nil
+ end
+ 
++-- ============================================================================
++-- Trait matching helpers
++-- ============================================================================
++
++-- Check if any keyword from a list is contained in a string (case-insensitive, plain substring)
++local function MatchKeywords(keywords, text)
++    if not keywords or not text then return false end
++    local lowerText = string.lower(text)
++    for _, keyword in ipairs(keywords) do
++        if string.find(lowerText, string.lower(keyword), 1, true) then
++            return true
++        end
++    end
++    return false
++end
++
+ -- ============================================================================
+ -- Strict personality ID parser & filter pipeline
+ -- ============================================================================
+@@ -420,6 +436,38 @@ function Loudmouth.Trigger(action)
+             end
+         end
+ 
++        -- 5. Place trait matching (hated places first, then liked places)
++        local placeTraitEntry = nil
++        local placeTraitType = nil
++        if not matchedEntry and not subMatchEntry then
++            local realZoneLower = string.lower(realZone or "")
++            local subZoneLower = string.lower(subZone or "")
++
++            -- Check hates first (priority over likes)
++            if personality.hates and personality.hates.places then
++                for _, keyword in ipairs(personality.hates.places) do
++                    if string.find(realZoneLower, string.lower(keyword), 1, true) or
++                       string.find(subZoneLower, string.lower(keyword), 1, true) then
++                        placeTraitEntry = personality.actions["Hates"]
++                        placeTraitType = "Hates"
++                        break
++                    end
++                end
++            end
++
++            -- Check likes if no hate match
++            if not placeTraitEntry and personality.likes and personality.likes.places then
++                for _, keyword in ipairs(personality.likes.places) do
++                    if string.find(realZoneLower, string.lower(keyword), 1, true) or
++                       string.find(subZoneLower, string.lower(keyword), 1, true) then
++                        placeTraitEntry = personality.actions["Likes"]
++                        placeTraitType = "Likes"
++                        break
++                    end
++                end
++            end
++        end
++
+         local played = false
+         if matchedEntry and matchedEntry.lines and #matchedEntry.lines > 0 then
+             local line = matchedEntry.lines[math.random(#matchedEntry.lines)]
+@@ -429,9 +477,15 @@ function Loudmouth.Trigger(action)
+             local line = subMatchEntry.lines[math.random(#subMatchEntry.lines)]
+             SafeSendChat(line, "SAY")
+             played = true
++        elseif placeTraitEntry and placeTraitEntry.lines and #placeTraitEntry.lines > 0 then
++            local line = placeTraitEntry.lines[math.random(#placeTraitEntry.lines)]
++            SafeSendChat(line, "SAY")
++            played = true
++            -- Consume pending flag for trait matches too
++            Loudmouth.PendingZoneComment = false
+         end
+ 
+-        if not matchedEntry and not subMatchEntry and Loudmouth.ShowZoneDebug then
++        if not matchedEntry and not subMatchEntry and not placeTraitEntry and Loudmouth.ShowZoneDebug then
+             print(string.format(
+                 "|cFFFF8800[Dev Alert]|r Missing zone data for '%s' (sub: '%s'). Please add entries!",
+                 realZone, subZone
+@@ -447,7 +501,44 @@ function Loudmouth.Trigger(action)
+         Loudmouth.PendingZoneComment = false
+     end
+ 
+-    local actionData = personality.actions[action]
++    -- ========================================================================
++    -- Entity trait matching (hated entities first, then liked entities)
++    -- Check against current target if one exists
++    -- ========================================================================
++    local entityTraitEntry = nil
++    local entityTraitType = nil
++    local targetName = nil
++    if UnitExists("target") then
++        targetName = UnitName("target")
++    end
++    if targetName then
++        local targetLower = string.lower(targetName)
++
++        -- Check hates first (priority over likes)
++        if personality.hates and personality.hates.entities then
++            for _, keyword in ipairs(personality.hates.entities) do
++                if string.find(targetLower, string.lower(keyword), 1, true) then
++                    entityTraitEntry = personality.actions["Hates"]
++                    entityTraitType = "Hates"
++                    break
++                end
++            end
++        end
++
++        -- Check likes if no hate match
++        if not entityTraitEntry and personality.likes and personality.likes.entities then
++            for _, keyword in ipairs(personality.likes.entities) do
++                if string.find(targetLower, string.lower(keyword), 1, true) then
++                    entityTraitEntry = personality.actions["Likes"]
++                    entityTraitType = "Likes"
++                    break
++                end
++            end
++        end
++    end
++
++    -- Select action data: entity trait > named action > generic
++    local actionData = entityTraitEntry or personality.actions[action]
+     local phrases = actionData and actionData.lines
+ 
+     if not phrases then
+diff --git a/Interface/AddOns/Loudmouth/Personalities/DwarfFemaleHunterQuirky.lua b/Interface/AddOns/Loudmouth/Personalities/DwarfFemaleHunterQuirky.lua
+index 86e3f55..7b6ac94 100644
+--- a/Interface/AddOns/Loudmouth/Personalities/DwarfFemaleHunterQuirky.lua
++++ b/Interface/AddOns/Loudmouth/Personalities/DwarfFemaleHunterQuirky.lua
+@@ -2,6 +2,17 @@ Loudmouth = Loudmouth or {}
+ Loudmouth._RawPersonalities = Loudmouth._RawPersonalities or {}
+ 
+ Loudmouth._RawPersonalities["DwarfFemaleHunterQuirky"] = {
++    -- Trait definitions: places and entities that trigger contextual banter
++    -- Hates takes priority over Likes when both match
++    likes = {
++        places = { "mountain", "valley", "forest", "cave", "mine" },
++        entities = { "boar", "bear", "gryphon", "wolf", "dwarf" },
++    },
++    hates = {
++        places = { "grave", "swamp", "cemetery", "crypt", "tomb" },
++        entities = { "undead", "scourge", "spider", "critter", "mouse" },
++    },
++
+     actions = {
+         ["Auto Shot"] = {
+             weight = 1/300,
+diff --git a/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua b/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua
+index cb59e1d..9cf275b 100644
+--- a/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua
++++ b/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua
+@@ -2,6 +2,17 @@ Loudmouth = Loudmouth or {}
+ Loudmouth._RawPersonalities = Loudmouth._RawPersonalities or {}
+ 
+ Loudmouth._RawPersonalities["HumanFemaleWarlockProfessional"] = {
++    -- Trait definitions: places and entities that trigger contextual banter
++    -- Hates takes priority over Likes when both match
++    likes = {
++        places = { "forge", "mountain", "arcane", "void", "shadow" },
++        entities = { "demon", "imp", "void", "shadow", "fel" },
++    },
++    hates = {
++        places = { "grave", "swamp", "cemetery", "crypt", "tomb", "light" },
++        entities = { "undead", "light", "paladin", "priest", "human" },
++    },
++
+     -- Per-personality abbreviation table.
+     -- Each entry maps an action key to a short, unique uppercase abbreviation.
+     -- If a spell is missing here, MakeMacroName falls back to the heuristic.
+@@ -387,6 +398,27 @@ Loudmouth._RawPersonalities["HumanFemaleWarlockProfessional"] = {
+                 "Every battle is a lesson in power.",
+             },
+         },
++
++        -- Likes banter (triggered when entering liked places or casting on liked entities)
++        ["Likes"] = {
++            weight = 1,
++            lines = {
++                "The void speaks to me here. I like it.",
++                "A fitting place for a warlock. I feel... empowered.",
++                "The shadows are kind to me here.",
++            },
++        },
++
++        -- Hates banter (triggered when entering hated places or casting on hated entities)
++        ["Hates"] = {
++            weight = 1,
++            lines = {
++                "I don't like this one bit. Let's get this over with.",
++                "This place reeks of foolishness and weak magic.",
++                "The light's influence here is unbearable.",
++            },
++        },
++
+         ["Demon Skin"] = {
+             weight = 1 / 5,   -- passive aura swap, not every button press
+             lines = {
+diff --git a/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua b/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
+index 9505fed..dda2845 100644
+--- a/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
++++ b/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
+@@ -21,6 +21,25 @@ Loudmouth._RawPersonalities = Loudmouth._RawPersonalities or {}
+ 
+ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+ 
++    -- ==================================================================
++    -- TRAITS TABLE (optional)
++    -- ==================================================================
++    -- Defines places and entities that trigger contextual banter.
++    -- Matching is case-insensitive, plain substring matching.
++    -- Hates takes priority over Likes when both match.
++    --
++    --   places  — keywords for zones/subzones (GetRealZoneText/GetSubZoneText)
++    --   entities — keywords for targets (UnitName("target"))
++    -- ==================================================================
++    -- likes = {
++    --     places = { "forge", "mountain" },
++    --     entities = { "dwarf", "gryphon" },
++    -- },
++    -- hates = {
++    --     places = { "grave", "swamp" },
++    --     entities = { "undead", "spider" },
++    -- },
++
+     -- ==================================================================
+     -- ACTIONS TABLE
+     -- ==================================================================
+@@ -66,6 +85,26 @@ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+                 "Nothing wrong with a careful look around.",
+             },
+         },
++
++        -- Likes banter (triggered when entering liked places or casting on liked entities)
++        ["Likes"] = {
++            weight = 1,
++            lines = {
++                "I could get used to this place.",
++                "This feels... right.",
++                "A pleasant spot, isn't it?",
++            },
++        },
++
++        -- Hates banter (triggered when entering hated places or casting on hated entities)
++        ["Hates"] = {
++            weight = 1,
++            lines = {
++                "I don't like this one bit.",
++                "This place gives me the creeps.",
++                "Let's get this over with.",
++            },
++        },
+     },
+ 
+     -- ==================================================================
+@@ -108,40 +147,50 @@ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+ }
+ 
+ -- ============================================================================
+--- TRIGGER() PRIORITY CHAIN (for reference when writing dialogue)
+--- ============================================================================
+---
+--- When Trigger(action) is called by a macro button, the engine follows
+--- this priority order:
+---
+---   1. PENDING ZONE COMMENT (100% when queued)
+---      If a zone comment is queued (the player just entered a new zone),
+---      it is spoken first with 100% probability.
+---
++    -- TRIGGER() PRIORITY CHAIN (for reference when writing dialogue)
++    -- ============================================================================
++    --
++    -- When Trigger(action) is called by a macro button, the engine follows
++    -- this priority order:
++    --
++    --   1. PENDING ZONE COMMENT (100% when queued)
++    --      If a zone comment is queued (the player just entered a new zone),
++    --      it is spoken first with 100% probability.
++    --
+     --   2. EXACT ZONE MATCH / ALIAS MATCH
+---      If the current zone (GetRealZoneText()) matches a key in the
+---      `zones` table, a random zone line is selected and spoken.
++    --      If the current zone (GetRealZoneText()) matches a key in the
++    --      `zones` table, a random zone line is selected and spoken.
+     --      Pending major-zone lines trigger once at 100% when matched.
+---
+---   3. SUBZONE KEYWORD MATCH
+---      If GetSubZoneText() contains a key from `subzones`, a random subzone
+---      line is selected and spoken once for that location visit.
+---
+---   4. ACTION ROLL
+---      The engine looks up the action name in `actions[action]`.
+---      It rolls math.random() against actionData.weight.  If the roll
+---      succeeds, a random line from `lines` is sent to chat.
+---      If the action is not found, it falls back to `actions["Generic"]`.
+---
+-    --   5. COOLDOWN CHECK
+---      Each action has its own per-action cooldown (Loudmouth.CooldownTime,
+---      default 5 seconds).  If the action was triggered recently, the
+---      entire chain is skipped for that action.
+---
+--- DESIGN NOTE:
+---   Keep action weights low (e.g. 1/100 to 1/500) for combat spells so
+---   the character doesn't speak every time a button is pressed.
+---   Keep consumable weights higher (e.g. 1/5 to 1) since they're
+---   used less frequently.
+---   Always include "Generic" with weight = 1 as a safety net.
+--- ============================================================================
++    --
++    --   3. SUBZONE KEYWORD MATCH
++    --      If GetSubZoneText() contains a key from `subzones`, a random subzone
++    --      line is selected and spoken once for that location visit.
++    --
++    --   4. PLACE TRAITS (HATED then LIKED)
++    --      If no explicit zone comment matches, check for hated/liked place
++    --      keywords in the current zone or subzone. Hates takes priority over
++    --      Likes. These use the actions["Hates"]/actions["Likes"] buckets.
++    --
++    --   5. ENTITY TRAITS (HATED then LIKED)
++    --      If a target exists, check for hated/liked entity keywords in
++    --      UnitName("target"). Hates takes priority over Likes. These use
++    --      the actions["Hates"]/actions["Likes"] buckets.
++    --
++    --   6. ACTION ROLL
++    --      The engine looks up the action name in `actions[action]`.
++    --      It rolls math.random() against actionData.weight.  If the roll
++    --      succeeds, a random line from `lines` is sent to chat.
++    --      If the action is not found, it falls back to `actions["Generic"]`.
++    --
++    --   7. COOLDOWN CHECK
++    --      Each action has its own per-action cooldown (Loudmouth.CooldownTime,
++    --      default 5 seconds).  If the action was triggered recently, the
++    --      entire chain is skipped for that action.
++    --
++    -- DESIGN NOTE:
++    --   Keep action weights low (e.g. 1/100 to 1/500) for combat spells so
++    --   the character doesn't speak every time a button is pressed.
++    --   Keep consumable weights higher (e.g. 1/5 to 1) since they're
++    --   used less frequently.
++    --   Always include "Generic" with weight = 1 as a safety net.
++    -- ============================================================================

@@ -1,0 +1,326 @@
+diff --git a/Interface/AddOns/Loudmouth/Loudmouth.lua b/Interface/AddOns/Loudmouth/Loudmouth.lua
+index b1e1197..8f48a55 100644
+--- a/Interface/AddOns/Loudmouth/Loudmouth.lua
++++ b/Interface/AddOns/Loudmouth/Loudmouth.lua
+@@ -137,6 +137,43 @@ function Loudmouth._ResolveSpellName(key)
+     return nil
+ end
+ 
++-- ============================================================================
++-- Trait matching helpers
++-- ============================================================================
++
++-- Case-insensitive substring match. Returns true if keyword is found in text.
++-- Uses plain string.find (no Lua patterns) for safety and performance.
++local function MatchKeyword(keyword, text)
++    if not keyword or not text then return false end
++    return string.find(string.lower(text), string.lower(keyword), 1, true) ~= nil
++end
++
++-- Check if any keyword in the list matches the zone or subzone text.
++-- Returns the matching keyword (case preserved from the list) or nil.
++local function MatchPlaceTrait(keywords, zoneText, subZoneText)
++    if not keywords or type(keywords) ~= "table" then return nil end
++    for _, keyword in ipairs(keywords) do
++        if MatchKeyword(keyword, zoneText) or MatchKeyword(keyword, subZoneText) then
++            return keyword
++        end
++    end
++    return nil
++end
++
++-- Check if any keyword in the list matches the target name.
++-- Returns the matching keyword (case preserved from the list) or nil.
++local function MatchEntityTrait(keywords)
++    if not keywords or type(keywords) ~= "table" then return nil end
++    local targetName = UnitName("target")
++    if not targetName then return nil end
++    for _, keyword in ipairs(keywords) do
++        if MatchKeyword(keyword, targetName) then
++            return keyword
++        end
++    end
++    return nil
++end
++
+ -- ============================================================================
+ -- Strict personality ID parser & filter pipeline
+ -- ============================================================================
+@@ -447,6 +484,115 @@ function Loudmouth.Trigger(action)
+         Loudmouth.PendingZoneComment = false
+     end
+ 
++    -- ========================================================================
++    -- Place Traits (Hates/Likes) — checked after pending zone comment
++    -- These are contextual: entering a hated place triggers Hates dialogue,
++    -- entering a liked place triggers Likes dialogue.
++    -- Hates wins over Likes if both match the same context.
++    -- ========================================================================
++    local traitPlayed = false
++    local realZone = GetRealZoneText() or ""
++    local subZone = GetSubZoneText() or ""
++
++    -- Check Hates places first (wins over Likes)
++    if personality.hates and personality.hates.places and #personality.hates.places > 0 then
++        local matchedKeyword = MatchPlaceTrait(personality.hates.places, realZone, subZone)
++        if matchedKeyword then
++            local hateData = personality.actions["Hates"]
++            if hateData and hateData.lines and #hateData.lines > 0 then
++                local chance = 1.0
++                if not Loudmouth.DebugMode then
++                    local weight = hateData.weight or 1.0
++                    chance = weight
++                end
++                if math.random() <= chance then
++                    local line = hateData.lines[math.random(#hateData.lines)]
++                    SafeSendChat(line, "SAY")
++                    traitPlayed = true
++                    Loudmouth.Cooldowns["Hates"] = now
++                end
++            end
++        end
++    end
++
++    -- Check Likes places (only if no Hates match)
++    if not traitPlayed and personality.likes and personality.likes.places and #personality.likes.places > 0 then
++        local matchedKeyword = MatchPlaceTrait(personality.likes.places, realZone, subZone)
++        if matchedKeyword then
++            local likeData = personality.actions["Likes"]
++            if likeData and likeData.lines and #likeData.lines > 0 then
++                local chance = 1.0
++                if not Loudmouth.DebugMode then
++                    local weight = likeData.weight or 1.0
++                    chance = weight
++                end
++                if math.random() <= chance then
++                    local line = likeData.lines[math.random(#likeData.lines)]
++                    SafeSendChat(line, "SAY")
++                    traitPlayed = true
++                    Loudmouth.Cooldowns["Likes"] = now
++                end
++            end
++        end
++    end
++
++    if traitPlayed then
++        return
++    end
++
++    -- ========================================================================
++    -- Entity Traits (Hates/Likes) — checked before action resolution
++    -- These trigger when casting on a target that matches the keywords.
++    -- Hates wins over Likes if both match the same target.
++    -- ========================================================================
++    local entityTraitPlayed = false
++
++    -- Check Hates entities first (wins over Likes)
++    if personality.hates and personality.hates.entities and #personality.hates.entities > 0 then
++        local matchedKeyword = MatchEntityTrait(personality.hates.entities)
++        if matchedKeyword then
++            local hateData = personality.actions["Hates"]
++            if hateData and hateData.lines and #hateData.lines > 0 then
++                local chance = 1.0
++                if not Loudmouth.DebugMode then
++                    local weight = hateData.weight or 1.0
++                    chance = weight
++                end
++                if math.random() <= chance then
++                    local line = hateData.lines[math.random(#hateData.lines)]
++                    SafeSendChat(line, "SAY")
++                    entityTraitPlayed = true
++                    Loudmouth.Cooldowns["Hates"] = now
++                end
++            end
++        end
++    end
++
++    -- Check Likes entities (only if no Hates match)
++    if not entityTraitPlayed and personality.likes and personality.likes.entities and #personality.likes.entities > 0 then
++        local matchedKeyword = MatchEntityTrait(personality.likes.entities)
++        if matchedKeyword then
++            local likeData = personality.actions["Likes"]
++            if likeData and likeData.lines and #likeData.lines > 0 then
++                local chance = 1.0
++                if not Loudmouth.DebugMode then
++                    local weight = likeData.weight or 1.0
++                    chance = weight
++                end
++                if math.random() <= chance then
++                    local line = likeData.lines[math.random(#likeData.lines)]
++                    SafeSendChat(line, "SAY")
++                    entityTraitPlayed = true
++                    Loudmouth.Cooldowns["Likes"] = now
++                end
++            end
++        end
++    end
++
++    if entityTraitPlayed then
++        return
++    end
++
+     local actionData = personality.actions[action]
+     local phrases = actionData and actionData.lines
+ 
+diff --git a/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua b/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua
+index cb59e1d..c15ab5c 100644
+--- a/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua
++++ b/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua
+@@ -406,6 +406,53 @@ Loudmouth._RawPersonalities["HumanFemaleWarlockProfessional"] = {
+         },
+     },
+ 
++    -- ==================================================================
++    -- LIKES AND HATES TRAITS
++    -- ==================================================================
++    -- Warlock personality: loves dark, powerful, and arcane places;
++    -- hates light, holy, and "soft" places.
++    -- ==================================================================
++    likes = {
++        places = {
++            "crypt", "grave", "cemetery", "shadow", "void", "fel", "dark", "ruin",
++            "ash", "ember", "flame", "core", "magma", "volcano",
++        },
++        entities = {
++            "demon", "void", "shadow", "voidwalker", "imp", "succubus", "felhunter",
++            "dreadsteed", "felguard", "infernal",
++        },
++    },
++    hates = {
++        places = {
++            "light", "sun", "day", "inn", "temple", "cathedral", "sanctuary",
++            "hearth", "home", "village", "town", "farm", "bakery",
++        },
++        entities = {
++            "priest", "paladin", "light", "holy", "sun", "day", "innkeeper",
++            "baker", "farmer", "guard", "noble",
++        },
++    },
++
++    -- Trait dialogue buckets
++    actions = {
++        ["Hates"] = {
++            weight = 1 / 5,
++            lines = {
++                "I hate this place. It reeks of weakness.",
++                "This light-filled nonsense is unbearable.",
++                "Why did we come to this... this *sanctuary*?",
++            },
++        },
++        ["Likes"] = {
++            weight = 1 / 5,
++            lines = {
++                "I love this place. The power is palpable.",
++                "Finally, somewhere the void embraces.",
++                "This is exactly where I want to be.",
++            },
++        },
++    },
++
+     zones = {
+         -- Starting Zones (Alliance)
+         ["Goldshire"] = {
+diff --git a/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua b/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
+index 9505fed..e8f9b1f 100644
+--- a/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
++++ b/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
+@@ -105,6 +105,99 @@ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+         --     },
+         -- },
+     },
++
++    -- ==================================================================
++    -- LIKES AND HATES TRAITS
++    -- ==================================================================
++    -- These tables define keywords for places and entities that trigger
++    -- contextual dialogue. Matching is case-insensitive substring search.
++    --
++    -- Place keywords are checked against GetRealZoneText() and GetSubZoneText().
++    -- Entity keywords are checked against UnitName("target").
++    --
++    -- Priority order (when Trigger() is called):
++    --   1. Pending zone comment (100% when queued)
++    --   2. Hated place keyword match
++    --   3. Liked place keyword match
++    --   4. Hated entity keyword match
++    --   5. Liked entity keyword match
++    --   6. Named action (e.g., ["Shadow Bolt"])
++    --   7. Generic fallback
++    --
++    -- Each trait bucket uses the standard { weight, lines } structure.
++    -- Hates always wins over Likes if both match the same context.
++    -- ==================================================================
++    likes = {
++        places = {
++            -- Example: keywords that match zone or subzone names
++            -- "forge", "mountain", "inn"
++        },
++        entities = {
++            -- Example: keywords that match target name
++            -- "dwarf", "gryphon", "friend"
++        },
++    },
++    hates = {
++        places = {
++            -- Example: keywords that match zone or subzone names
++            -- "grave", "swamp", "cemetery"
++        },
++        entities = {
++            -- Example: keywords that match target name
++            -- "undead", "spider", "enemy"
++        },
++    },
++
++    -- Trait dialogue buckets (standard weighted action structure)
++    actions = {
++        -- Hates dialogue bucket (triggered when entering hated place or targeting hated entity)
++        -- ["Hates"] = {
++        --     weight = 1 / 10,
++        --     lines = {
++        --         "I hate this place.",
++        --         "This is exactly where I do not want to be.",
++        --     },
++        -- },
++
++        -- Likes dialogue bucket (triggered when entering liked place or targeting liked entity)
++        -- ["Likes"] = {
++        --     weight = 1 / 10,
++        --     lines = {
++        --         "I love this place.",
++        --         "This is exactly where I want to be.",
++        --     },
++        -- },
++
++        -- Example: a spell action
++        -- ["Shadow Bolt"] = {
++        --     weight = 1 / 100,   -- ~1% chance per press
++        --     lines = {
++        --         "Shadow Bolt — a gift from the void.",
++        --         "Feel the darkness take hold.",
++        --         "One bolt, one corpse.",
++        --     },
++        -- },
++
++        -- Example: a consumable / utility action (higher weight)
++        -- ["Healing Items"] = {
++        --     weight = 1,           -- always attempt to speak
++        --     lines = {
++        --         "Time for a healthstone.",
++        --         "Patch up and keep moving.",
++        --     },
++        -- },
++
++        -- REQUIRED: Generic fallback (used when no specific action matches)
++        -- Every bucket MUST have at least 3 lines.
++        ["Generic"] = {
++            weight = 1,
++            lines = {
++                "I should keep my eyes open.",
++                "Steady now. One step at a time.",
++                "Nothing wrong with a careful look around.",
++            },
++        },
++    },
+ }
+ 
+ -- ============================================================================

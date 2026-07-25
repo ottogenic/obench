@@ -1,0 +1,156 @@
+diff --git a/Interface/AddOns/Loudmouth/Loudmouth.lua b/Interface/AddOns/Loudmouth/Loudmouth.lua
+index b1e1197..4aa1f6b 100644
+--- a/Interface/AddOns/Loudmouth/Loudmouth.lua
++++ b/Interface/AddOns/Loudmouth/Loudmouth.lua
+@@ -444,6 +444,52 @@ function Loudmouth.Trigger(action)
+         end
+ 
+         -- No comment was found, but we still consumed the pending flag.
++        -- Now check for trait-based place reactions (hated then liked).
++        -- Trait place reactions are resolved here because they are location-based
++        -- and should be prioritized over entity reactions and action rolls.
++        if not played and personality.likes and personality.hates then
++            -- Check hated places first (priority over liked)
++            local hatedPlaceMatched = false
++            if personality.hates.places and #personality.hates.places > 0 then
++                for _, keyword in ipairs(personality.hates.places) do
++                    if string.find(string.lower(realZone), string.lower(keyword), 1, true) or
++                       string.find(string.lower(subZone), string.lower(keyword), 1, true) then
++                        -- Found a hated place keyword match
++                        local hateData = personality.actions["Hates"]
++                        if hateData and hateData.lines and #hateData.lines > 0 then
++                            local line = hateData.lines[math.random(#hateData.lines)]
++                            SafeSendChat(line, "SAY")
++                            played = true
++                            break
++                        end
++                    end
++                end
++            end
++
++            -- Check liked places if no hated place matched
++            if not played and personality.likes.places and #personality.likes.places > 0 then
++                for _, keyword in ipairs(personality.likes.places) do
++                    if string.find(string.lower(realZone), string.lower(keyword), 1, true) or
++                       string.find(string.lower(subZone), string.lower(keyword), 1, true) then
++                        -- Found a liked place keyword match
++                        local likeData = personality.actions["Likes"]
++                        if likeData and likeData.lines and #likeData.lines > 0 then
++                            local line = likeData.lines[math.random(#likeData.lines)]
++                            SafeSendChat(line, "SAY")
++                            played = true
++                            break
++                        end
++                    end
++                end
++            end
++        end
++
++        if played then
++            Loudmouth.PendingZoneComment = false
++            return
++        end
++
++        -- Still no comment was found, but we still consumed the pending flag.
+         Loudmouth.PendingZoneComment = false
+     end
+ 
+diff --git a/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua b/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
+index 9505fed..33ca9c3 100644
+--- a/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
++++ b/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
+@@ -88,6 +88,51 @@ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+         -- },
+     },
+ 
++    -- ==================================================================
++    -- LIKES TABLE (positive trait dialogue)
++    -- ==================================================================
++    -- Defines places and entities the character likes.
++    -- Place keywords are matched against GetRealZoneText() and GetSubZoneText().
++    -- Entity keywords are matched against UnitName("target").
++    -- Matching is case-insensitive plain substring matching.
++    --
++    -- Both places and entities use the same { weight, lines } structure
++    -- as action buckets for probability control.
++    -- ==================================================================
++    likes = {
++        places = {
++            -- Example: keywords that match zones/subzones
++            -- "forge", "mountain", "forest"
++        },
++        entities = {
++            -- Example: keywords that match target names
++            -- "dwarf", "gryphon", "ally"
++        },
++    },
++
++    -- ==================================================================
++    -- HATES TABLE (negative trait dialogue)
++    -- ==================================================================
++    -- Defines places and entities the character hates.
++    -- Place keywords are matched against GetRealZoneText() and GetSubZoneText().
++    -- Entity keywords are matched against UnitName("target").
++    -- Matching is case-insensitive plain substring matching.
++    --
++    -- Hates take priority over Likes when both match the same context.
++    -- Both places and entities use the same { weight, lines } structure
++    -- as action buckets for probability control.
++    -- ==================================================================
++    hates = {
++        places = {
++            -- Example: keywords that match zones/subzones
++            -- "grave", "swamp", "dungeon"
++        },
++        entities = {
++            -- Example: keywords that match target names
++            -- "undead", "spider", "enemy"
++        },
++    },
++
+     -- ==================================================================
+     -- SUBZONES TABLE (keyword-match subzone dialogue)
+     -- ==================================================================
+@@ -118,22 +163,38 @@ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+ --      If a zone comment is queued (the player just entered a new zone),
+ --      it is spoken first with 100% probability.
+ --
+-    --   2. EXACT ZONE MATCH / ALIAS MATCH
++--   2. EXACT ZONE MATCH / ALIAS MATCH
+ --      If the current zone (GetRealZoneText()) matches a key in the
+ --      `zones` table, a random zone line is selected and spoken.
+-    --      Pending major-zone lines trigger once at 100% when matched.
++--      Pending major-zone lines trigger once at 100% when matched.
+ --
+ --   3. SUBZONE KEYWORD MATCH
+ --      If GetSubZoneText() contains a key from `subzones`, a random subzone
+ --      line is selected and spoken once for that location visit.
+ --
+---   4. ACTION ROLL
++--   4. PENDING HATED PLACE REACTION (from likes.hates.places)
++--      If no explicit zone matched but a hated place keyword was found,
++--      select from actions["Hates"].
++--
++--   5. PENDING LIKED PLACE REACTION (from likes.likes.places)
++--      If no explicit zone or hated place matched but a liked place
++--      keyword was found, select from actions["Likes"].
++--
++--   6. HATED ENTITY REACTION (from likes.hates.entities)
++--      If target exists and contains a hated entity keyword,
++--      select from actions["Hates"].
++--
++--   7. LIKED ENTITY REACTION (from likes.likes.entities)
++--      If target exists and contains a liked entity keyword,
++--      select from actions["Likes"].
++--
++--   8. ACTION ROLL
+ --      The engine looks up the action name in `actions[action]`.
+ --      It rolls math.random() against actionData.weight.  If the roll
+ --      succeeds, a random line from `lines` is sent to chat.
+ --      If the action is not found, it falls back to `actions["Generic"]`.
+ --
+-    --   5. COOLDOWN CHECK
++--   9. COOLDOWN CHECK
+ --      Each action has its own per-action cooldown (Loudmouth.CooldownTime,
+ --      default 5 seconds).  If the action was triggered recently, the
+ --      entire chain is skipped for that action.
