@@ -1,5 +1,0 @@
-{"run":1,"job":139,"risk":"high","secs":216,"status":"done","malformed":0,"blocked":0,"dispatches":4,"findings":0,"asks":0,"agents":4,"diff":"1 file changed, 8 insertions(+), 7 deletions(-)"}
-{"run":2,"job":140,"risk":"high","secs":154,"status":"done","malformed":0,"blocked":0,"dispatches":4,"findings":0,"asks":0,"agents":4,"diff":"1 file changed, 8 insertions(+), 7 deletions(-)"}
-{"run":3,"job":141,"risk":"high","secs":342,"status":"done","malformed":0,"blocked":0,"dispatches":6,"findings":0,"asks":0,"agents":4,"diff":"2 files changed, 42 insertions(+), 7 deletions(-)"}
-{"run":4,"job":142,"risk":"high","secs":304,"status":"paused","malformed":1,"blocked":0,"dispatches":11,"findings":0,"asks":0,"agents":3,"diff":"2 files changed, 46 insertions(+), 7 deletions(-)"}
-{"run":5,"job":143,"risk":"high","secs":711,"status":"done","malformed":2,"blocked":1,"dispatches":14,"findings":2,"asks":0,"agents":4,"diff":"2 files changed, 50 insertions(+), 7 deletions(-)"}
