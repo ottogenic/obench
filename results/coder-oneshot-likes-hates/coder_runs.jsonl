@@ -5,3 +5,5 @@
 {"stamp":"07252229","run":1,"model":"openrouter/qwen/qwen3-coder-next","rc":0,"coder_secs":366,"diffstat":" 2 files changed, 111 insertions(+), 4 deletions(-)","contract_line":0,"patch":"07252229-r1.patch"}
 {"stamp":"07252236","run":1,"model":"dgx-localhost-8000/qwen3-coder-next-fp8","rc":0,"coder_secs":377,"diffstat":" 4 files changed, 220 insertions(+), 37 deletions(-)","contract_line":0,"patch":"07252236-r1.patch"}
 {"stamp":"07252236","run":2,"model":"dgx-localhost-8000/qwen3-coder-next-fp8","rc":0,"coder_secs":996,"diffstat":" 4 files changed, 292 insertions(+), 8 deletions(-)","contract_line":0,"patch":"07252236-r2.patch"}
+{"stamp":"07252308","run":1,"model":"dgx-localhost-8000/qwen3-coder-next-fp8","rc":0,"coder_secs":429,"diffstat":" 4 files changed, 223 insertions(+), 7 deletions(-)","contract_line":0,"patch":"07252308-r1.patch"}
+{"stamp":"07252319","run":1,"model":"dgx-localhost-8000/qwen3-coder-next-fp8","rc":0,"coder_secs":406,"diffstat":" 3 files changed, 268 insertions(+), 47 deletions(-)","contract_line":0,"patch":"07252319-r1.patch"}

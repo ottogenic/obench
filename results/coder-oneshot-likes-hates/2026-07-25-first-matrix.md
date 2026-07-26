@@ -73,3 +73,16 @@ Rule-by-rule on the v2 run:
 Takeaway so far: 12 lines of instruction removed two of three defect classes on the
 first attempt, on the same serving stack where engine swaps moved nothing. n=1;
 needs repetition before banking.
+
+### v3 packet (reworded cooldown rule) -- one more vllm FP8 run
+
+| vllm FP8 | CRIT | MAJ | MIN | Grade | Patch |
+|---|---|---|---|---|---|
+| + overlay rules v3 | 0 | 1 | 2 | C+ | 07252319-r1 |
+
+Rule-by-rule: helpers-before-use FOLLOWED (2/2 with overlay); .luacheckrc REGRESSED
+(untouched despite UnitName use -- 1/2 with overlay); cooldown symmetry STILL not
+followed under the reworded rule (writes Cooldowns[effectiveAction], check unchanged;
+0/2). Verdict across the A/B: rule 1 works, rule 3 is a coin flip, rule 2 fails under
+both wordings -- the fix for cooldowns is removing the choice ("do not change the
+cooldown key"), not better prose. B- -> C+ swing is within baseline run-to-run variance.

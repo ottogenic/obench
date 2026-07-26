@@ -1,0 +1,415 @@
+diff --git a/Interface/AddOns/Loudmouth/Loudmouth.lua b/Interface/AddOns/Loudmouth/Loudmouth.lua
+index b1e1197..b9b7944 100644
+--- a/Interface/AddOns/Loudmouth/Loudmouth.lua
++++ b/Interface/AddOns/Loudmouth/Loudmouth.lua
+@@ -142,6 +142,62 @@ end
+ -- ============================================================================
+ 
+ -- Token arrays for strict parsing
++
++-- ============================================================================
++-- Trait matching helpers
++-- ============================================================================
++
++-- Match a keyword against a string using case-insensitive plain substring search.
++-- Uses string.find with plain mode (no Lua patterns) for safety and performance.
++-- Returns true if keyword is found, false otherwise.
++local function MatchKeyword(keyword, text)
++    if not keyword or not text then return false end
++    if type(keyword) ~= "string" or type(text) ~= "string" then return false end
++    if #keyword == 0 or #text == 0 then return false end
++    return string.find(string.lower(text), string.lower(keyword), 1, true) ~= nil
++end
++
++-- Check if the current zone or subzone matches any place keywords in a traits table.
++-- Returns the matched keyword string if found, nil otherwise.
++local function MatchPlaceTraits(traitsTable)
++    if not traitsTable then return nil end
++    local realZone = GetRealZoneText() or ""
++    local subZone = GetSubZoneText() or ""
++
++    -- Check places array
++    if traitsTable.places and #traitsTable.places > 0 then
++        for _, keyword in ipairs(traitsTable.places) do
++            if MatchKeyword(keyword, realZone) or MatchKeyword(keyword, subZone) then
++                return keyword
++            end
++        end
++    end
++
++    return nil
++end
++
++-- Check if the current target name matches any entity keywords in a traits table.
++-- Returns the matched keyword string if found, nil otherwise.
++local function MatchEntityTraits(traitsTable)
++    if not traitsTable then return nil end
++
++    -- Get target name safely
++    local targetName = UnitName("target")
++    if not targetName or type(targetName) ~= "string" or #targetName == 0 then
++        return nil
++    end
++
++    -- Check entities array
++    if traitsTable.entities and #traitsTable.entities > 0 then
++        for _, keyword in ipairs(traitsTable.entities) do
++            if MatchKeyword(keyword, targetName) then
++                return keyword
++            end
++        end
++    end
++
++    return nil
++end
+ local RACES = { "NightElf", "Human", "Dwarf", "Undead", "Orc", "Tauren", "Gnome", "Troll" }
+ local GENDERS = { "Male", "Female" }
+ local CLASSES = { "Warrior", "Paladin", "Hunter", "Rogue", "Priest", "Shaman", "Mage", "Warlock", "Druid" }
+@@ -420,6 +476,23 @@ function Loudmouth.Trigger(action)
+             end
+         end
+ 
++        -- 5. Place trait matching (hates first, then likes) for pending zone comments
++        -- Traits are checked only if no explicit zone/subzone comment matched
++        local traitMatched = nil
++        if not matchedEntry and not subMatchEntry then
++            -- Check hates first (takes priority)
++            local hateKeyword = MatchPlaceTraits(personality.hates)
++            if hateKeyword then
++                traitMatched = personality.actions["Hates"]
++            else
++                -- Check likes if no hate matched
++                local likeKeyword = MatchPlaceTraits(personality.likes)
++                if likeKeyword then
++                    traitMatched = personality.actions["Likes"]
++                end
++            end
++        end
++
+         local played = false
+         if matchedEntry and matchedEntry.lines and #matchedEntry.lines > 0 then
+             local line = matchedEntry.lines[math.random(#matchedEntry.lines)]
+@@ -429,9 +502,20 @@ function Loudmouth.Trigger(action)
+             local line = subMatchEntry.lines[math.random(#subMatchEntry.lines)]
+             SafeSendChat(line, "SAY")
+             played = true
++        elseif traitMatched and traitMatched.lines and #traitMatched.lines > 0 then
++            -- Trait matching uses the same weight system as actions
++            local chance = 1.0
++            if not Loudmouth.DebugMode and traitMatched.weight then
++                chance = traitMatched.weight
++            end
++            if math.random() <= chance then
++                local line = traitMatched.lines[math.random(#traitMatched.lines)]
++                SafeSendChat(line, "SAY")
++                played = true
++            end
+         end
+ 
+-        if not matchedEntry and not subMatchEntry and Loudmouth.ShowZoneDebug then
++        if not matchedEntry and not subMatchEntry and not traitMatched and Loudmouth.ShowZoneDebug then
+             print(string.format(
+                 "|cFFFF8800[Dev Alert]|r Missing zone data for '%s' (sub: '%s'). Please add entries!",
+                 realZone, subZone
+@@ -447,7 +531,34 @@ function Loudmouth.Trigger(action)
+         Loudmouth.PendingZoneComment = false
+     end
+ 
+-    local actionData = personality.actions[action]
++    -- ========================================================================
++    -- Entity trait matching (hates first, then likes) for current target
++    -- This happens before named action resolution but only if we haven't
++    -- already played a zone comment.
++    -- ========================================================================
++    local traitAction = nil
++    if not Loudmouth.PendingZoneComment then
++        -- Check hates first (takes priority over likes)
++        if personality.hates then
++            local hateKeyword = MatchEntityTraits(personality.hates)
++            if hateKeyword then
++                traitAction = "Hates"
++            end
++        end
++
++        -- Check likes if no hate matched
++        if not traitAction and personality.likes then
++            local likeKeyword = MatchEntityTraits(personality.likes)
++            if likeKeyword then
++                traitAction = "Likes"
++            end
++        end
++    end
++
++    -- Use trait action if matched, otherwise use the passed-in action
++    local effectiveAction = traitAction or action
++
++    local actionData = personality.actions[effectiveAction]
+     local phrases = actionData and actionData.lines
+ 
+     if not phrases then
+@@ -467,7 +578,8 @@ function Loudmouth.Trigger(action)
+         if math.random() <= chance then
+             local phrase = phrases[math.random(#phrases)]
+             SafeSendChat(phrase, "SAY")
+-            Loudmouth.Cooldowns[action] = now
++            -- Use effectiveAction for cooldown to ensure trait actions have their own cooldown
++            Loudmouth.Cooldowns[effectiveAction] = now
+         end
+     end
+ end
+diff --git a/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua b/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua
+index cb59e1d..db5fece 100644
+--- a/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua
++++ b/Interface/AddOns/Loudmouth/Personalities/HumanFemaleWarlockProfessional.lua
+@@ -623,4 +623,51 @@ Loudmouth._RawPersonalities["HumanFemaleWarlockProfessional"] = {
+             },
+         },
+     },
+-}
+\ No newline at end of file
++
++    -- ==================================================================
++    -- LIKES AND HATES TRAITS
++    -- ==================================================================
++    likes = {
++        places = {
++            "forge", "mountain", "stone", "arcane",
++        },
++        entities = {
++            "dwarf", "gryphon", "void", "shadow",
++        },
++    },
++    hates = {
++        places = {
++            "grave", "swamp", "darnassus", "darn", "elf", "tree",
++        },
++        entities = {
++            "undead", "spider", "scourge", "paladin", "light",
++        },
++    },
++
++    -- ==================================================================
++    -- TRAIT ACTION BUCKETS
++    -- ==================================================================
++    actions = {
++        -- Likes trait bucket (when a liked place or entity is matched)
++        ["Likes"] = {
++            weight = 1 / 100,
++            lines = {
++                "I rather like this place.",
++                "This feels... agreeable.",
++                "A pleasant change of scenery.",
++                "There's something comforting here.",
++            },
++        },
++
++        -- Hates trait bucket (when a hated place or entity is matched)
++        ["Hates"] = {
++            weight = 1 / 100,
++            lines = {
++                "I hate this place.",
++                "This fills me with dread.",
++                "The air itself recoils here.",
++                "I would rather be anywhere else.",
++            },
++        },
++
++        -- [Existing actions continue below...]
+\ No newline at end of file
+diff --git a/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua b/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
+index 9505fed..6b9f9bc 100644
+--- a/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
++++ b/Interface/AddOns/Loudmouth/Personalities/PERSONALITY_TEMPLATE.lua
+@@ -21,6 +21,78 @@ Loudmouth._RawPersonalities = Loudmouth._RawPersonalities or {}
+ 
+ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+ 
++    -- ==================================================================
++    -- ZONES TABLE (exact-match zone dialogue)
++    -- ==================================================================
++    -- Keys are exact zone names as returned by GetRealZoneText().
++    -- When the player enters a matching zone, the engine selects one of
++    -- the lines at random and sends it to chat.
++    --
++    -- To find the exact zone name, print GetRealZoneText() in-game or
++    -- check the WoW wiki.
++    -- ==================================================================
++    zones = {
++        -- Example entries (replace with zones relevant to your character):
++        -- ["Stormwind"] = {
++        --     lines = {
++        --         "Stormwind's walls are impressive.",
++        --         "A city of light. How quaint.",
++        --     },
++        -- },
++    },
++
++    -- ==================================================================
++    -- SUBZONES TABLE (keyword-match subzone dialogue)
++    -- ==================================================================
++    -- Keys are substrings.  When GetSubZoneText() contains the key
++    -- (case-insensitive partial match), the engine picks a random line.
++    --
++    -- Subzones are implemented by the core engine. A subzone check happens once
++    -- per pending location visit; matched entries pick a random line directly.
++    -- ==================================================================
++    subzones = {
++        -- Example entries (replace with subzones relevant to your character):
++        -- ["Elwynn Forest"] = {
++        --     lines = {
++        --         "The forest is peaceful today.",
++        --     },
++        -- },
++    },
++
++    -- ==================================================================
++    -- LIKES AND HATES TRAITS TABLE
++    -- ==================================================================
++    -- Optional tables defining place and entity preferences.
++    -- Keywords are matched case-insensitively using plain substring matching.
++    --
++    -- places    — keyword arrays for zone/subzone matching
++    -- entities  — keyword arrays for target name matching
++    --
++    -- When entering a zone/subzone containing a liked keyword, a Likes line plays.
++    -- When entering a zone/subzone containing a hated keyword, a Hates line plays.
++    -- When casting on a target containing a liked keyword, a Likes line plays.
++    -- When casting on a target containing a hated keyword, a Hates line plays.
++    --
++    -- Hates takes priority over Likes when both match the same context.
++    -- Trait dialogue uses the same { weight, lines } structure as actions.
++    -- ==================================================================
++    likes = {
++        places = {
++            -- Example: "forge", "mountain"
++        },
++        entities = {
++            -- Example: "dwarf", "gryphon"
++        },
++    },
++    hates = {
++        places = {
++            -- Example: "grave", "swamp"
++        },
++        entities = {
++            -- Example: "undead", "spider"
++        },
++    },
++
+     -- ==================================================================
+     -- ACTIONS TABLE
+     -- ==================================================================
+@@ -37,6 +109,24 @@ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+     --       a random line directly when a zone match fires.
+     -- ==================================================================
+     actions = {
++        -- Likes trait bucket (when a liked place or entity is matched)
++        -- ["Likes"] = {
++        --     weight = 1 / 100,
++        --     lines = {
++        --         "I rather like this place.",
++        --         "This feels... agreeable.",
++        --     },
++        -- },
++
++        -- Hates trait bucket (when a hated place or entity is matched)
++        -- ["Hates"] = {
++        --     weight = 1 / 100,
++        --     lines = {
++        --         "I hate this place.",
++        --         "This fills me with dread.",
++        --     },
++        -- },
++
+         -- Example: a spell action
+         -- ["Shadow Bolt"] = {
+         --     weight = 1 / 100,   -- ~1% chance per press
+@@ -67,44 +157,6 @@ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+             },
+         },
+     },
+-
+-    -- ==================================================================
+-    -- ZONES TABLE (exact-match zone dialogue)
+-    -- ==================================================================
+-    -- Keys are exact zone names as returned by GetRealZoneText().
+-    -- When the player enters a matching zone, the engine selects one of
+-    -- the lines at random and sends it to chat.
+-    --
+-    -- To find the exact zone name, print GetRealZoneText() in-game or
+-    -- check the WoW wiki.
+-    -- ==================================================================
+-    zones = {
+-        -- Example entries (replace with zones relevant to your character):
+-        -- ["Stormwind"] = {
+-        --     lines = {
+-        --         "Stormwind's walls are impressive.",
+-        --         "A city of light. How quaint.",
+-        --     },
+-        -- },
+-    },
+-
+-    -- ==================================================================
+-    -- SUBZONES TABLE (keyword-match subzone dialogue)
+-    -- ==================================================================
+-    -- Keys are substrings.  When GetSubZoneText() contains the key
+-    -- (case-insensitive partial match), the engine picks a random line.
+-    --
+-    -- Subzones are implemented by the core engine. A subzone check happens once
+-    -- per pending location visit; matched entries pick a random line directly.
+-    -- ==================================================================
+-    subzones = {
+-        -- Example entries (replace with subzones relevant to your character):
+-        -- ["Elwynn Forest"] = {
+-        --     lines = {
+-        --         "The forest is peaceful today.",
+-        --     },
+-        -- },
+-    },
+ }
+ 
+ -- ============================================================================
+@@ -118,22 +170,32 @@ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+ --      If a zone comment is queued (the player just entered a new zone),
+ --      it is spoken first with 100% probability.
+ --
+-    --   2. EXACT ZONE MATCH / ALIAS MATCH
++--   2. EXACT ZONE MATCH / ALIAS MATCH
+ --      If the current zone (GetRealZoneText()) matches a key in the
+ --      `zones` table, a random zone line is selected and spoken.
+-    --      Pending major-zone lines trigger once at 100% when matched.
++--      Pending major-zone lines trigger once at 100% when matched.
+ --
+ --   3. SUBZONE KEYWORD MATCH
+ --      If GetSubZoneText() contains a key from `subzones`, a random subzone
+ --      line is selected and spoken once for that location visit.
+ --
+---   4. ACTION ROLL
++--   4. PLACE TRAIT MATCH (LIKES / HATES)
++--      If the current zone/subzone contains a keyword in likes.places or
++--      hates.places, the corresponding trait bucket is selected.
++--      Hates takes priority over Likes.
++--
++--   5. ENTITY TRAIT MATCH (LIKES / HATES)
++--      If the current target (UnitName("target")) contains a keyword in
++--      likes.entities or hates.entities, the corresponding trait bucket
++--      is selected. Hates takes priority over Likes.
++--
++--   6. ACTION ROLL
+ --      The engine looks up the action name in `actions[action]`.
+ --      It rolls math.random() against actionData.weight.  If the roll
+ --      succeeds, a random line from `lines` is sent to chat.
+ --      If the action is not found, it falls back to `actions["Generic"]`.
+ --
+-    --   5. COOLDOWN CHECK
++--   7. COOLDOWN CHECK
+ --      Each action has its own per-action cooldown (Loudmouth.CooldownTime,
+ --      default 5 seconds).  If the action was triggered recently, the
+ --      entire chain is skipped for that action.
+@@ -144,4 +206,4 @@ Loudmouth._RawPersonalities["<Race><Gender><Class><Variant>"] = {
+ --   Keep consumable weights higher (e.g. 1/5 to 1) since they're
+ --   used less frequently.
+ --   Always include "Generic" with weight = 1 as a safety net.
+--- ============================================================================
++-- ============================================================================
+\ No newline at end of file
