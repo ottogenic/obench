@@ -1,0 +1,1 @@
+{"label":"seq10_qc_4","job":246,"prompt":"medium_demo_prompt.txt","effort":"default","risk":"high","secs":259,"status":"done","malformed":0,"blocked":0,"dispatches":4,"findings":0,"agents":4,"files":2,"diff":"1 file changed, 8 insertions(+), 7 deletions(-)"}

@@ -1,0 +1,1 @@
+{"label":"loc_qwencoder_1","job":238,"prompt":"medium_demo_prompt.txt","effort":"default","risk":"high","secs":947,"status":"done","malformed":0,"blocked":0,"dispatches":12,"findings":2,"agents":4,"files":3,"diff":"2 files changed, 55 insertions(+), 7 deletions(-)"}
