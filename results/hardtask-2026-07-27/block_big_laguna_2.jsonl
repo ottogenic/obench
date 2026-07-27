@@ -1,0 +1,1 @@
+{"label":"big_laguna_2","job":217,"prompt":"demo_prompt.txt","effort":"default","risk":"medium","secs":2106,"status":"done","malformed":2,"blocked":2,"dispatches":11,"findings":1,"agents":4,"files":6,"diff":"4 files changed, 284 insertions(+), 51 deletions(-)"}

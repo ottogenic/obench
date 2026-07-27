@@ -1,0 +1,1 @@
+{"label":"big_gemmaHigh_1","job":213,"prompt":"demo_prompt.txt","effort":"high","risk":"medium","secs":4701,"status":"done","malformed":6,"blocked":0,"dispatches":18,"findings":4,"agents":4,"files":5,"diff":"4 files changed, 262 insertions(+), 158 deletions(-)"}

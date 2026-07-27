@@ -1,0 +1,1 @@
+{"label":"big_qwencoder_1","job":215,"prompt":"demo_prompt.txt","effort":"default","risk":"high","secs":778,"status":"done","malformed":2,"blocked":1,"dispatches":12,"findings":2,"agents":4,"files":6,"diff":"5 files changed, 416 insertions(+), 13 deletions(-)"}

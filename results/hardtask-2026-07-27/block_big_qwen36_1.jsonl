@@ -1,0 +1,1 @@
+{"label":"big_qwen36_1","job":214,"prompt":"demo_prompt.txt","effort":"default","risk":"medium","secs":430,"status":"done","malformed":1,"blocked":0,"dispatches":7,"findings":5,"agents":4,"files":7,"diff":"6 files changed, 363 insertions(+), 47 deletions(-)"}
