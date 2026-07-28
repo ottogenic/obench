@@ -1,0 +1,1 @@
+{"label":"fin10_qc_5","job":5,"prompt":"demo_prompt.txt","effort":"default","risk":"high","secs":297,"status":"done","malformed":0,"blocked":0,"dispatches":4,"findings":0,"agents":4,"files":2,"diff":"1 file changed, 8 insertions(+), 4 deletions(-)"}
